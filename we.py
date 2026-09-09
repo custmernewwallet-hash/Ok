@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-أتمتة شراء Umniah PUBG - النسخة النهائية المصححة
-مع إصلاح رقم الهاتف والاسم و UWallet
+أتمتة شراء بطاقات Umniah PUBG - النسخة النهائية المصححة الكاملة
+Umniah PUBG Card Purchase Automation - Final Complete Version
 """
 
 import subprocess
@@ -151,14 +151,19 @@ def step2_checkout(driver):
     return True
 
 def step3_fill_info(driver):
-    """الخطوة 3: ملء البيانات - مصححة"""
+    """الخطوة 3: ملء البيانات - مصححة تماماً"""
     print("📍 الخطوة 3: ملء بيانات العميل")
     
-    # البريد
-    fill_input(driver, "//input[@id='customer-email']", EMAIL)
+    # ========== البريد ==========
+    print("📧 ملء البريد الإلكتروني...")
+    try:
+        fill_input(driver, "//input[@id='customer-email']", EMAIL)
+        print(f"✅ تم إدخال البريد: {EMAIL}")
+    except Exception as e:
+        print(f"⚠️ خطأ في البريد: {e}")
     time.sleep(0.5)
     
-    # ========== رقم الهاتف - مع الـ ID الصحيح ==========
+    # ========== رقم الهاتف ==========
     print("📞 ملء رقم الهاتف...")
     try:
         phone_element = WebDriverWait(driver, 10).until(
@@ -173,11 +178,9 @@ def step3_fill_info(driver):
         phone_element.clear()
         time.sleep(0.2)
         
-        # إدخال الرقم حرف حرف
         phone_element.send_keys(PHONE)
         time.sleep(0.3)
         
-        # تفعيل الأحداث
         driver.execute_script("""
             var el = arguments[0];
             el.dispatchEvent(new Event('input', {bubbles: true}));
@@ -191,7 +194,7 @@ def step3_fill_info(driver):
         if PHONE in final_value:
             print(f"✅ تم إدخال رقم الهاتف: {PHONE}")
         else:
-            print(f"⚠️ قد لم يتم إدخال الهاتف بشكل صحيح: {final_value}")
+            print(f"⚠️ قيمة الهاتف: {final_value}")
             
     except Exception as e:
         print(f"❌ خطأ في رقم الهاتف: {e}")
@@ -200,20 +203,39 @@ def step3_fill_info(driver):
     
     # ========== الاسم الكامل ==========
     print("👤 ملء الاسم الكامل...")
-    firstname_xpaths = [
-        "//input[@id='firstname']",
-        "//input[@name='firstname']",
-        "//input[contains(@id, 'firstname')]",
-    ]
+    try:
+        name_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@class='input-text form-input']"))
+        )
+        
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", name_element)
+        time.sleep(0.5)
+        
+        name_element.click()
+        time.sleep(0.2)
+        name_element.clear()
+        time.sleep(0.2)
+        
+        name_element.send_keys(FULL_NAME)
+        time.sleep(0.3)
+        
+        driver.execute_script("""
+            var el = arguments[0];
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            el.dispatchEvent(new Event('blur', {bubbles: true}));
+        """, name_element)
+        
+        time.sleep(0.5)
+        
+        final_value = name_element.get_attribute("value") or ""
+        if FULL_NAME in final_value:
+            print(f"✅ تم إدخال الاسم الكامل: {FULL_NAME}")
+        else:
+            print(f"⚠️ قيمة الاسم: {final_value}")
     
-    for xpath in firstname_xpaths:
-        try:
-            if driver.find_elements(By.XPATH, xpath):
-                if fill_input(driver, xpath, FULL_NAME):
-                    print(f"✅ تم إدخال الاسم الكامل: {FULL_NAME}")
-                    break
-        except:
-            pass
+    except Exception as e:
+        print(f"❌ خطأ في الاسم الكامل: {e}")
     
     print("✅ تمت الخطوة 3\n")
     return True
@@ -227,7 +249,6 @@ def step4_payment_method(driver):
         driver.execute_script("window.scrollBy(0, 300);")
         time.sleep(0.5)
         
-        # البحث عن جميع الـ radios
         print("🔍 البحث عن خيارات الدفع...")
         radios = driver.find_elements(By.XPATH, "//input[@type='radio']")
         print(f"📊 وجدت {len(radios)} خيار دفع")
@@ -239,11 +260,9 @@ def step4_payment_method(driver):
                 driver.execute_script("arguments[0].scrollIntoView({block:'center'});", radio)
                 time.sleep(0.3)
                 
-                # احصل على المعلومات
                 radio_id = radio.get_attribute("id") or ""
                 radio_value = radio.get_attribute("value") or ""
                 
-                # البحث عن النص المرتبط
                 label_text = ""
                 try:
                     if radio_id:
@@ -254,11 +273,9 @@ def step4_payment_method(driver):
                 
                 print(f"   [{i}] Value: '{radio_value}' | Text: '{label_text[:50] if label_text else 'N/A'}'")
                 
-                # تحقق إذا كان UWallet
                 if 'uwallet' in label_text.lower() or 'uwallet' in radio_value.lower():
                     print(f"✅ وجدت UWallet في الخيار {i}!")
                     
-                    # اضغط
                     try:
                         radio.click()
                     except:
@@ -266,13 +283,11 @@ def step4_payment_method(driver):
                     
                     time.sleep(0.5)
                     
-                    # تحقق من التحديد
                     if radio.is_selected():
                         print("✅ تم تحديد UWallet بنجاح!")
                         uwallet_found = True
                         break
                     else:
-                        # جرب JavaScript
                         driver.execute_script("""
                             arguments[0].checked = true;
                             arguments[0].dispatchEvent(new Event('change', {bubbles: true}));
@@ -303,31 +318,49 @@ def step4_payment_method(driver):
         return True
 
 def step5_agree_terms(driver):
-    """الخطوة 5: الموافقة على الشروط"""
+    """الخطوة 5: الموافقة على الشروط والأحكام"""
     print("📍 الخطوة 5: الموافقة على الشروط والأحكام")
     
     try:
-        agreement_field = driver.find_element(By.XPATH, "//div[contains(@class, 'checkout-agreement')]//input[@type='checkbox']")
+        print("🔍 البحث عن checkbox الشروط...")
         
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", agreement_field)
-        time.sleep(0.3)
+        checkbox = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@type='checkbox' and @class='checkbox required-entry']"))
+        )
         
-        if not agreement_field.is_selected():
-            agreement_field.click()
-            time.sleep(0.5)
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+        time.sleep(0.5)
+        
+        is_checked = checkbox.is_selected()
+        print(f"   الحالة الحالية: {'محدد ✓' if is_checked else 'غير محدد'}")
+        
+        if not is_checked:
+            try:
+                checkbox.click()
+                time.sleep(0.5)
+            except:
+                driver.execute_script("arguments[0].click();", checkbox)
+                time.sleep(0.5)
             
-            if not agreement_field.is_selected():
+            if not checkbox.is_selected():
                 driver.execute_script("""
                     arguments[0].checked = true;
                     arguments[0].dispatchEvent(new Event('change', {bubbles: true}));
-                """, agreement_field)
+                    arguments[0].dispatchEvent(new Event('click', {bubbles: true}));
+                """, checkbox)
+                time.sleep(0.5)
         
-        print("✅ تم الموافقة على الشروط")
+        if checkbox.is_selected():
+            print("✅ تم تحديد الشروط بنجاح!")
+        else:
+            print("⚠️ لم يتم تحديد الشروط رغم المحاولات - لكن سنستمر")
+        
         time.sleep(1)
         print("✅ تمت الخطوة 5\n")
         return True
+        
     except Exception as e:
-        print(f"⚠️ خطأ في الشروط: {e}")
+        print(f"❌ خطأ في الشروط: {e}")
         print("✅ تمت الخطوة 5\n")
         return True
 
