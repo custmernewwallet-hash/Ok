@@ -385,10 +385,11 @@ def step6_place_order(driver):
     return False
 
 def step7_wallet_otp(driver):
-    """الخطوة 7: إدخال المحفظة و OTP"""
+    """الخطوة 7: إدخال المحفظة و OTP - معدلة"""
     print("📍 الخطوة 7: إدخال رقم المحفظة وإرسال OTP")
     
     try:
+        # البحث عن حقل المحفظة
         wallet_input = WebDriverWait(driver, 15).until(
             EC.visibility_of_element_located((By.ID, "phone_number"))
         )
@@ -396,31 +397,85 @@ def step7_wallet_otp(driver):
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", wallet_input)
         time.sleep(0.4)
         
+        # ملء المحفظة
         wallet_input.click()
-        wallet_input.send_keys(Keys.CONTROL, "a")
+        time.sleep(0.2)
+        wallet_input.clear()
+        time.sleep(0.2)
         wallet_input.send_keys(WALLET_NUMBER)
         
+        # تفعيل الأحداث
         driver.execute_script("""
             const el = arguments[0];
             el.value = arguments[1];
             el.dispatchEvent(new Event('input', {bubbles: true}));
             el.dispatchEvent(new Event('change', {bubbles: true}));
+            el.dispatchEvent(new Event('blur', {bubbles: true}));
         """, wallet_input, WALLET_NUMBER)
         
         time.sleep(0.7)
         
+        # التحقق من القيمة
         final_value = wallet_input.get_attribute("value") or ""
-        if final_value != WALLET_NUMBER:
-            print(f"❌ فشل إدخال المحفظة")
+        if WALLET_NUMBER not in final_value:
+            print(f"❌ فشل إدخال المحفظة: {final_value}")
             return False
         
-        print("✅ تم إدخال رقم المحفظة")
+        print(f"✅ تم إدخال رقم المحفظة: {WALLET_NUMBER}")
+        time.sleep(1)
         
-        if not click_element(driver, "//button[contains(text(), 'إرسال رمز التحقق')]"):
-            print("❌ فشل إرسال OTP")
+        # البحث عن زر الإرسال وإزالة disabled
+        print("🔍 البحث عن زر إرسال رمز التحقق...")
+        
+        send_button_xpaths = [
+            "//button[contains(@class, 'btn-primary') and contains(., 'إرسال')]",
+            "//button[contains(text(), 'إرسال رمز التحقق')]",
+            "//button[contains(@class, 'btn') and contains(@class, 'primary')]"
+        ]
+        
+        send_button = None
+        for xpath in send_button_xpaths:
+            try:
+                buttons = driver.find_elements(By.XPATH, xpath)
+                if buttons:
+                    send_button = buttons[0]
+                    print(f"✅ وجدت الزر عبر: {xpath}")
+                    break
+            except:
+                pass
+        
+        if send_button is None:
+            print("⚠️ لم نتمكن من العثور على الزر - سنحاول البحث البديل")
+            all_buttons = driver.find_elements(By.TAG_NAME, "button")
+            for btn in all_buttons:
+                try:
+                    if 'إرسال' in btn.text:
+                        send_button = btn
+                        print(f"✅ وجدت الزر: {btn.text}")
+                        break
+                except:
+                    pass
+        
+        if send_button is None:
+            print("❌ فشل العثور على زر الإرسال")
             return False
         
-        print("✅ تم إرسال رمز التحقق")
+        # إزالة disabled وتفعيل الزر
+        print("🔧 تفعيل الزر وإزالة disabled...")
+        driver.execute_script("""
+            const btn = arguments[0];
+            btn.disabled = false;
+            btn.removeAttribute('disabled');
+            btn.classList.remove('disabled');
+            return true;
+        """, send_button)
+        
+        time.sleep(0.5)
+        
+        # النقر على الزر
+        driver.execute_script("arguments[0].click();", send_button)
+        print("✅ تم الضغط على الزر عبر JavaScript")
+        
         time.sleep(3)
         print("✅ تمت الخطوة 7\n")
         return True
@@ -430,6 +485,8 @@ def step7_wallet_otp(driver):
         return False
     except Exception as e:
         print(f"❌ خطأ: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def step8_check_result(driver):
