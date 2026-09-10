@@ -46,6 +46,9 @@ QUANTITY = 2
 TELEGRAM_TOKEN = "7327256170:AAEiQ_F_BI1V9iUHzgPPui7JRwqGnj6Jys4"
 TELEGRAM_CHAT_ID = "6873334348"
 
+# الرقم الأول من lu.txt للاستخدام الأول
+FIRST_WALLET = "0791046602"
+
 # ============================================================================
 # إعداد المتصفح
 # ============================================================================
@@ -105,10 +108,13 @@ def fill_input(driver, xpath, text, wait_time=10):
         return False
 
 def send_telegram(message, wallet_number="", status="success"):
-    """إرسال رسالة للتليجرام"""
+    """إرسال رسالة للتليجرام فقط عند النجاح"""
+    if status != "success":
+        return False
+    
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        status_emoji = "✅" if status == "success" else "❌"
+        status_emoji = "✅"
         text = f"{status_emoji} النتيجة:\n━━━━━━━━━━\n📱 الرقم: {wallet_number}\n💬 {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         response = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
         if response.status_code == 200:
@@ -134,16 +140,16 @@ def read_wallet_numbers(filename="lu.txt"):
         print(f"❌ خطأ في قراءة الملف: {e}")
         return []
 
-def get_success_message(driver):
-    """الحصول على رسالة النجاح الخضراء فقط"""
+def get_success_message_green_only(driver):
+    """الحصول على رسالة النجاح الخضراء فقط - يجب أن تحتوي على successfully"""
     try:
-        print("   🔍 البحث عن رسالة خضراء...")
+        print("   🔍 البحث عن رسالة خضراء مع 'successfully'...")
         
         # البحث عن رسائل خضراء
         message_xpaths = [
             "//div[contains(@class, 'alert') and contains(@class, 'success')]",
             "//div[contains(@class, 'alert-success')]",
-            "//span[contains(@class, 'success') and contains(@class, 'green')]"
+            "//span[contains(@class, 'success')]"
         ]
         
         for xpath in message_xpaths:
@@ -153,7 +159,7 @@ def get_success_message(driver):
                     try:
                         if el.is_displayed():
                             text = el.text or ""
-                            if text.strip() and ('نجح' in text or 'تم' in text or 'success' in text.lower()):
+                            if text.strip() and 'successfully' in text.lower():
                                 print(f"   ✅ وجدت رسالة خضراء: {text[:100]}")
                                 return text, True
                     except:
@@ -161,7 +167,7 @@ def get_success_message(driver):
             except:
                 pass
         
-        # محاولة JavaScript للبحث عن اللون الأخضر
+        # محاولة JavaScript للبحث عن اللون الأخضر مع successfully
         result = driver.execute_script("""
             var allDivs = document.querySelectorAll('div, span, p');
             for (var div of allDivs) {
@@ -172,11 +178,10 @@ def get_success_message(driver):
                     var style = window.getComputedStyle(div);
                     var bgColor = style.backgroundColor;
                     
-                    // تحقق من اللون الأخضر
-                    if (bgColor && (bgColor.includes('0, 128, 0') || bgColor.includes('rgb(0, 128, 0)') || 
-                        bgColor.includes('green') || bgColor.includes('008000'))) {
-                        
-                        if (text.includes('نجح') || text.includes('تم') || text.includes('إرسال')) {
+                    // تحقق من اللون الأخضر مع كلمة successfully
+                    if (text.toLowerCase().includes('successfully')) {
+                        if (bgColor && (bgColor.includes('0, 128, 0') || bgColor.includes('rgb(0, 128, 0)') || 
+                            bgColor.includes('green') || bgColor.includes('008000'))) {
                             return {
                                 text: text,
                                 color: bgColor
@@ -192,7 +197,7 @@ def get_success_message(driver):
             print(f"   ✅ وجدت رسالة خضراء (JS): {result['text'][:100]}")
             return result['text'], True
         
-        print("   ❌ لم توجد رسالة خضراء")
+        print("   ❌ لم توجد رسالة خضراء مع 'successfully'")
         return "لم يتم العثور على رسالة خضراء", False
         
     except Exception as e:
@@ -357,7 +362,6 @@ def step5_agree_terms(driver):
         
         if checkbox is None:
             print("   ❌ لم أجد checkbox - سأحاول JavaScript")
-            # جرب JavaScript للعثور على checkbox
             driver.execute_script("""
                 var checkboxes = document.querySelectorAll('input[type="checkbox"]');
                 if (checkboxes.length > 0) {
@@ -369,7 +373,6 @@ def step5_agree_terms(driver):
             time.sleep(1)
             return True
         
-        # تمرير الـ checkbox وتحقق من حالته
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
         time.sleep(0.3)
         
@@ -378,14 +381,12 @@ def step5_agree_terms(driver):
         
         if not is_checked:
             print("   ⏳ جاري تحديد الـ checkbox...")
-            # جرب النقر أولاً
             try:
                 checkbox.click()
                 time.sleep(0.4)
             except:
                 pass
             
-            # إذا لم ينجح، استخدم JavaScript
             if not checkbox.is_selected():
                 print("   📝 استخدام JavaScript للتحديد...")
                 driver.execute_script("""
@@ -395,7 +396,6 @@ def step5_agree_terms(driver):
                 """, checkbox)
                 time.sleep(0.4)
         
-        # تحقق النهائي
         final_status = checkbox.is_selected()
         if final_status:
             print("   ✅ تم تحديد الـ checkbox بنجاح")
@@ -408,13 +408,11 @@ def step5_agree_terms(driver):
         
     except Exception as e:
         print(f"❌ خطأ: {e}")
-        import traceback
-        traceback.print_exc()
         print("✅ تمت الخطوة 5 (مع خطأ)\n")
         return True
 
 def step6_place_order(driver):
-    """الخطوة 6: إجراء الطلب"""
+    """الخطوة 6: إجراء الطلب - مع تأخير 3 ثواني"""
     print("📍 الخطوة 6: إجراء الطلب")
     
     try:
@@ -446,6 +444,9 @@ def step6_place_order(driver):
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", order_button)
         time.sleep(0.3)
         
+        print("   ⏳ الانتظار 3 ثواني قبل الضغط...")
+        time.sleep(3)
+        
         print("   ⏳ الضغط على الزر...")
         driver.execute_script("arguments[0].click();", order_button)
         
@@ -460,14 +461,13 @@ def step6_place_order(driver):
         traceback.print_exc()
         return False
 
-def process_wallet_number(driver, wallet_number):
-    """معالجة رقم محفظة واحد"""
+def process_first_wallet(driver, wallet_number):
+    """معالجة الرقم الأول - إرسال رمز التحقق الأول"""
     print(f"\n{'='*70}")
-    print(f"🔄 معالجة الرقم: {wallet_number}")
+    print(f"🔄 المرحلة الأولى - الرقم الأول: {wallet_number}")
     print(f"{'='*70}\n")
     
     try:
-        # البحث عن حقل المحفظة
         print("1️⃣ البحث عن حقل رقم المحفظة...")
         wallet_input = WebDriverWait(driver, 8).until(
             EC.visibility_of_element_located((By.ID, "phone_number"))
@@ -476,7 +476,6 @@ def process_wallet_number(driver, wallet_number):
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", wallet_input)
         time.sleep(0.2)
         
-        # تنظيف وملء الحقل
         print("2️⃣ إدخال رقم المحفظة...")
         wallet_input.click()
         time.sleep(0.1)
@@ -484,7 +483,6 @@ def process_wallet_number(driver, wallet_number):
         time.sleep(0.1)
         wallet_input.send_keys(wallet_number)
         
-        # تفعيل الأحداث
         driver.execute_script("""
             const el = arguments[0];
             el.value = arguments[1];
@@ -497,20 +495,19 @@ def process_wallet_number(driver, wallet_number):
         final_value = wallet_input.get_attribute("value") or ""
         if wallet_number not in final_value:
             print(f"❌ فشل إدخال المحفظة")
-            send_telegram("فشل إدخال رقم المحفظة", wallet_number, "error")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
             return False
         
         print(f"✅ تم إدخال رقم المحفظة")
         time.sleep(0.3)
         
         # البحث عن زر الإرسال
-        print("3️⃣ البحث عن زر الإرسال...")
+        print("3️⃣ البحث عن زر إرسال رمز التحقق...")
         
         send_button = None
         send_button_xpaths = [
             "//button[contains(text(), 'إرسال')]",
-            "//button[contains(@class, 'btn-primary')]",
-            "//button[contains(text(), 'اعادة')]"
+            "//button[contains(@class, 'btn-primary')]"
         ]
         
         for xpath in send_button_xpaths:
@@ -525,10 +522,9 @@ def process_wallet_number(driver, wallet_number):
         
         if send_button is None:
             print("❌ فشل العثور على الزر")
-            send_telegram("فشل العثور على زر الإرسال", wallet_number, "error")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
             return False
         
-        # تفعيل الزر
         print("4️⃣ تفعيل الزر والضغط...")
         driver.execute_script("""
             const btn = arguments[0];
@@ -540,33 +536,142 @@ def process_wallet_number(driver, wallet_number):
         print("✅ تم الضغط على الزر")
         
         # الانتظار 10 ثواني
-        print("5️⃣ الانتظار للنتيجة...")
+        print("5️⃣ الانتظار 10 ثواني للنتيجة...")
         for i in range(10):
             remaining = 10 - i
             print(f"   ⏳ {remaining}s...", end="\r")
             time.sleep(1)
         
-        print("\n6️⃣ التحقق من النتيجة الخضراء...")
-        message, is_success = get_success_message(driver)
+        print("\n6️⃣ التحقق من الرسالة الخضراء...")
+        message, is_success = get_success_message_green_only(driver)
         
         if is_success:
-            print(f"✅ نجاح!")
+            print(f"✅ نجاح! الرسالة الخضراء ظهرت")
             send_telegram(message[:200], wallet_number, "success")
+            print(f"✅ تم الإرسال للبوت\n")
             return True
         else:
-            print(f"❌ فشل: {message[:100]}")
-            send_telegram(f"رسالة: {message[:100]}", wallet_number, "error")
+            print(f"❌ فشل: لم تظهر رسالة خضراء")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
             return False
         
     except TimeoutException as e:
         print(f"❌ انتهت مهلة الانتظار: {e}")
-        send_telegram("انتهت مهلة الانتظار", wallet_number, "error")
+        print("⏹️ توقف - لن يتم الإرسال للبوت\n")
         return False
     except Exception as e:
         print(f"❌ خطأ: {e}")
         import traceback
         traceback.print_exc()
-        send_telegram(f"خطأ: {str(e)}", wallet_number, "error")
+        print("⏹️ توقف - لن يتم الإرسال للبوت\n")
+        return False
+
+def process_wallet_number(driver, wallet_number):
+    """معالجة رقم محفظة - إعادة إرسال رمز التحقق"""
+    print(f"\n{'='*70}")
+    print(f"🔄 إعادة إرسال - الرقم: {wallet_number}")
+    print(f"{'='*70}\n")
+    
+    try:
+        print("1️⃣ البحث عن حقل رقم المحفظة...")
+        wallet_input = WebDriverWait(driver, 8).until(
+            EC.visibility_of_element_located((By.ID, "phone_number"))
+        )
+        
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", wallet_input)
+        time.sleep(0.2)
+        
+        print("2️⃣ إدخال رقم المحفظة الجديد...")
+        wallet_input.click()
+        time.sleep(0.1)
+        wallet_input.clear()
+        time.sleep(0.1)
+        wallet_input.send_keys(wallet_number)
+        
+        driver.execute_script("""
+            const el = arguments[0];
+            el.value = arguments[1];
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        """, wallet_input, wallet_number)
+        
+        time.sleep(0.3)
+        
+        final_value = wallet_input.get_attribute("value") or ""
+        if wallet_number not in final_value:
+            print(f"❌ فشل إدخال المحفظة")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
+            return False
+        
+        print(f"✅ تم إدخال رقم المحفظة")
+        time.sleep(0.3)
+        
+        # البحث عن زر إعادة الإرسال
+        print("3️⃣ البحث عن زر إعادة الإرسال...")
+        
+        resend_button = None
+        resend_button_xpaths = [
+            "//button[contains(text(), 'إعادة')]",
+            "//button[contains(text(), 'resend')]",
+            "//button[contains(@class, 'btn-primary')]"
+        ]
+        
+        for xpath in resend_button_xpaths:
+            try:
+                buttons = driver.find_elements(By.XPATH, xpath)
+                if buttons:
+                    # احصل على آخر زر (زر إعادة الإرسال عادة يكون آخر زر)
+                    resend_button = buttons[-1]
+                    print(f"   ✅ وجدت الزر: {buttons[-1].text[:30]}")
+                    break
+            except:
+                pass
+        
+        if resend_button is None:
+            print("❌ فشل العثور على زر إعادة الإرسال")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
+            return False
+        
+        print("4️⃣ تفعيل الزر والضغط...")
+        driver.execute_script("""
+            const btn = arguments[0];
+            btn.disabled = false;
+            btn.removeAttribute('disabled');
+            btn.click();
+        """, resend_button)
+        
+        print("✅ تم الضغط على زر إعادة الإرسال")
+        
+        # الانتظار 10 ثواني
+        print("5️⃣ الانتظار 10 ثواني للنتيجة...")
+        for i in range(10):
+            remaining = 10 - i
+            print(f"   ⏳ {remaining}s...", end="\r")
+            time.sleep(1)
+        
+        print("\n6️⃣ التحقق من الرسالة الخضراء مع 'OTP resent successfully'...")
+        message, is_success = get_success_message_green_only(driver)
+        
+        if is_success and 'successfully' in message.lower():
+            print(f"✅ نجاح! الرسالة الخضراء ظهرت مع 'successfully'")
+            send_telegram(message[:200], wallet_number, "success")
+            print(f"✅ تم الإرسال للبوت\n")
+            return True
+        else:
+            print(f"❌ فشل: لم تظهر رسالة خضراء أو بدون 'successfully'")
+            print(f"   📋 الرسالة: {message[:100]}")
+            print("⏹️ توقف - لن يتم الإرسال للبوت\n")
+            return False
+        
+    except TimeoutException as e:
+        print(f"❌ انتهت مهلة الانتظار: {e}")
+        print("⏹️ توقف - لن يتم الإرسال للبوت\n")
+        return False
+    except Exception as e:
+        print(f"❌ خطأ: {e}")
+        import traceback
+        traceback.print_exc()
+        print("⏹️ توقف - لن يتم الإرسال للبوت\n")
         return False
 
 # ============================================================================
@@ -598,7 +703,6 @@ def main():
             print(f"\n{'='*70}")
             if not step_func(driver):
                 print(f"❌ فشلت خطوة: {step_name}")
-                send_telegram(f"❌ فشلت خطوة: {step_name}", "", "error")
                 return
         
         # قراءة الأرقام من الملف
@@ -607,7 +711,22 @@ def main():
             print("❌ لا توجد أرقام في الملف")
             return
         
-        # معالجة كل رقم
+        # المرحلة الأولى - الرقم الأول (الإرسال الأول)
+        print("\n" + "=" * 70)
+        print("🔴 المرحلة الأولى: إرسال رمز التحقق الأول")
+        print("=" * 70)
+        
+        first_success = process_first_wallet(driver, FIRST_WALLET)
+        
+        if not first_success:
+            print("❌ فشلت المرحلة الأولى - توقف البرنامج")
+            return
+        
+        # المرحلة الثانية - باقي الأرقام (إعادة الإرسال)
+        print("\n" + "=" * 70)
+        print("🟢 المرحلة الثانية: إعادة إرسال رموز التحقق")
+        print("=" * 70)
+        
         results = []
         for i, wallet_number in enumerate(wallet_numbers, 1):
             print(f"\n📊 معالجة رقم {i} من {len(wallet_numbers)}")
@@ -620,27 +739,29 @@ def main():
         
         # الملخص
         print("\n" + "=" * 70)
-        print("📊 ملخص النتائج:")
+        print("📊 ملخص النتائج النهائي:")
         print("=" * 70)
+        
         successful = sum(1 for _, s in results if s)
-        print(f"✅ نجح: {successful}/{len(wallet_numbers)}")
+        print(f"\n✅ نجح: {successful}/{len(wallet_numbers)}")
         print(f"❌ فشل: {len(wallet_numbers) - successful}/{len(wallet_numbers)}")
         
-        for wallet, success in results:
+        print("\n📋 تفاصيل النتائج:")
+        for i, (wallet, success) in enumerate(results, 1):
             status = "✅ نجح" if success else "❌ فشل"
-            print(f"  {status} - {wallet}")
+            print(f"   {i}. {status} - {wallet}")
         
         print("=" * 70)
         
     except Exception as e:
-        print(f"❌ خطأ: {e}\n")
+        print(f"❌ خطأ عام: {e}\n")
         import traceback
         traceback.print_exc()
-        send_telegram(f"❌ خطأ: {str(e)}", "", "error")
     
     finally:
         if driver:
             try:
+                time.sleep(2)
                 driver.quit()
                 print("\n🔒 تم إغلاق المتصفح")
             except:
