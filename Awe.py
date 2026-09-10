@@ -93,12 +93,10 @@ def fill_input_super(driver, element, text, field_name=""):
                 el.dispatchEvent(event);
             });
             
-            // إذا كان الحقل بداخل form
             if (el.form) {
                 el.form.dispatchEvent(new Event('change', { bubbles: true }));
             }
             
-            // إذا كان بداخل parent
             if (el.parentElement) {
                 el.parentElement.dispatchEvent(new Event('change', { bubbles: true }));
             }
@@ -112,7 +110,7 @@ def fill_input_super(driver, element, text, field_name=""):
             print(f"✅ تم إدخال {field_name}: {text}")
             return True
         
-        # 6️⃣ جرب JavaScript مباشر كملاذ أخير
+        # 6️⃣ جرب JavaScript مباشر
         driver.execute_script("""
             var input = arguments[0];
             var value = arguments[1];
@@ -131,7 +129,7 @@ def fill_input_super(driver, element, text, field_name=""):
             print(f"✅ تم إدخال {field_name}: {text}")
             return True
         
-        print(f"⚠️ قد لا يكون {field_name} قد أُدخل بشكل صحيح (القيمة: {final_value})")
+        print(f"⚠️ قد لا يكون {field_name} قد أُدخل بشكل صحيح")
         return True
         
     except Exception as e:
@@ -156,16 +154,30 @@ def send_telegram(message, status="success"):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         status_emoji = "✅" if status == "success" else "❌"
-        text = f"{status_emoji} نتيجة الشراء: {'نجح' if status == 'success' else 'فشل'}\n━━━━━━━━━━\n📱 رقم: {PHONE}\n💬 {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        response = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
+        
+        # صيغة الرسالة
+        if status == "success":
+            text = f"✅ تم الشراء بنجاح!\n\n📱 الرقم: {PHONE}\n💬 الرسالة: {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        else:
+            text = f"❌ فشل الشراء\n\n📱 الرقم: {PHONE}\n💬 الرسالة: {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        # إرسال الرسالة
+        response = requests.post(
+            url,
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": text},
+            timeout=10
+        )
+        
         if response.status_code == 200:
             print("✅ تم إرسال الرسالة للتليجرام\n")
             return True
         else:
-            print(f"⚠️ فشل إرسال الرسالة: {response.status_code}")
+            print(f"⚠️ خطأ في الإرسال: {response.status_code}\n")
+            return False
+            
     except Exception as e:
-        print(f"⚠️ خطأ في إرسال الرسالة: {e}")
-    return False
+        print(f"⚠️ خطأ في إرسال الرسالة: {e}\n")
+        return False
 
 # ============================================================================
 # الخطوات
@@ -208,7 +220,7 @@ def step3_fill_info(driver):
     """الخطوة 3: ملء البيانات"""
     print("📍 الخطوة 3: ملء بيانات العميل")
     
-    # 1️⃣ البريد الإلكتروني
+    # البريد الإلكتروني
     try:
         email_input = WebDriverWait(driver, WAIT_TIME).until(
             EC.presence_of_element_located((By.XPATH, "//input[@id='customer-email']"))
@@ -219,7 +231,7 @@ def step3_fill_info(driver):
     
     time.sleep(0.8)
     
-    # 2️⃣ الاسم الكامل
+    # الاسم الكامل
     firstname_xpaths = [
         "//input[@name='firstname']",
         "//input[contains(@class, 'firstname')]",
@@ -237,7 +249,7 @@ def step3_fill_info(driver):
     
     time.sleep(0.8)
     
-    # 3️⃣ رقم الهاتف
+    # رقم الهاتف
     phone_xpaths = [
         "//input[contains(@class, 'inputPhoneNumber')]",
         "//input[@id='telephone']",
@@ -442,36 +454,27 @@ def step8_check_result(driver):
     time.sleep(2)
     
     try:
-        # 🔍 البحث عن الرسالة الخضراء بـ selector الصحيح
-        print("🔍 البحث عن الرسالة الخضراء...")
-        
-        # الطريقة الأولى: الـ selector الدقيق من DevTools
-        result_selectors = [
-            "div.bg-green-100.text-green-800",
-            "div[class*='bg-green-100']",
-            "div.relative.my-4.rounded-md.bg-green-100",
-            "//div[contains(@class, 'bg-green-100') and contains(@class, 'text-green-800')]",
-            "//div[contains(@class, 'alert-success')]",
-            "//div[contains(@class, 'success')]"
-        ]
-        
+        # البحث عن الرسالة الخضراء
         result_element = None
-        result_text = None
+        result_text = ""
         
-        # جرب جميع الـ selectors
-        for selector in result_selectors:
+        # الطريقة الأولى: البحث بـ class bg-green-100
+        try:
+            result_element = driver.find_element(By.CSS_SELECTOR, "div.bg-green-100.text-green-800")
+        except:
+            pass
+        
+        # الطريقة الثانية: البحث بـ alert
+        if not result_element:
             try:
-                if selector.startswith("//"):
-                    # XPath
-                    elements = driver.find_elements(By.XPATH, selector)
-                    if elements:
-                        result_element = elements[0]
-                        break
-                else:
-                    # CSS Selector
-                    result_element = driver.find_element(By.CSS_SELECTOR, selector)
-                    if result_element:
-                        break
+                result_element = driver.find_element(By.XPATH, "//div[contains(@class, 'alert')]")
+            except:
+                pass
+        
+        # الطريقة الثالثة: أي div أخضر
+        if not result_element:
+            try:
+                result_element = driver.find_element(By.XPATH, "//div[contains(@class, 'success')]")
             except:
                 pass
         
@@ -484,32 +487,28 @@ def step8_check_result(driver):
             
             print(f"✅ وجدت الرسالة!")
             print(f"📋 النص: {result_text}")
-            print(f"📋 الـ Class: {result_class}")
             
             # تحديد نوع النتيجة
             is_success = 'green' in result_class.lower() or 'success' in result_class.lower()
             
             if is_success:
-                print("✅ النتيجة: **نجح**")
-                status = "success"
+                print("✅ النتيجة: نجح")
+                send_telegram(result_text, status="success")
             else:
-                print("❌ النتيجة: **فشل**")
-                status = "error"
-            
-            # ✅ إرسال الرسالة للبوت
-            message_to_send = result_text if result_text else f"الشراء ({status})"
-            print(f"\n📤 إرسال للبوت: {message_to_send}")
-            send_telegram(message_to_send, status=status)
+                print("❌ النتيجة: فشل")
+                send_telegram(result_text, status="error")
             
             print("✅ تمت الخطوة 8\n")
             return True
         else:
             print("⚠️ لم يتم العثور على رسالة النتيجة")
+            send_telegram("لم يتم العثور على نتيجة واضحة", status="error")
             print("✅ تمت الخطوة 8\n")
             return True
         
     except Exception as e:
-        print(f"❌ خطأ في الخطوة 8: {e}")
+        print(f"❌ خطأ: {e}")
+        send_telegram(f"خطأ في الخطوة 8: {str(e)}", status="error")
         print("✅ تمت الخطوة 8\n")
         return True
 
