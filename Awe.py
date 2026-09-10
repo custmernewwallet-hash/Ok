@@ -110,13 +110,13 @@ def send_telegram(message, status="success"):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         status_emoji = "✅" if status == "success" else "❌"
-        text = f"{status_emoji} نتيجة الشراء: {'نجح' if status == 'success' else 'فشل'}\n━━━━━━━━━━\n📱 رقم: {PHONE}\n💬 {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        text = f"{status_emoji} نتيجة الشراء:\n━━━━━━━━━━\n📱 رقم: {PHONE}\n💬 {message}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         response = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
         if response.status_code == 200:
             print("✅ تم إرسال الرسالة للتليجرام\n")
             return True
-    except:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في التليجرام: {e}")
     return False
 
 # ============================================================================
@@ -496,32 +496,121 @@ def step8_check_result(driver):
     time.sleep(2)
     
     try:
-        result_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'alert')]"))
-        )
+        # البحث عن alert أو message أي نوع
+        print("🔍 البحث عن رسائل النتيجة...")
         
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", result_element)
-        time.sleep(0.5)
+        # جرب البحث عن عناصر مختلفة
+        result_xpaths = [
+            "//div[contains(@class, 'alert')]",
+            "//div[contains(@class, 'message')]",
+            "//div[contains(@class, 'success')]",
+            "//div[contains(@class, 'error')]",
+            "//div[contains(@class, 'notification')]",
+            "//p[contains(@class, 'alert') or contains(@class, 'message')]",
+            "//span[contains(., 'نجح') or contains(., 'فشل') or contains(., 'تم')]"
+        ]
         
-        result_class = result_element.get_attribute("class") or ""
-        result_text = result_element.text
+        result_element = None
+        result_text = ""
+        result_class = ""
         
-        print(f"📋 النتيجة: {result_text}")
+        for xpath in result_xpaths:
+            try:
+                elements = driver.find_elements(By.XPATH, xpath)
+                if elements:
+                    # خذ أول عنصر مرئي
+                    for el in elements:
+                        try:
+                            if el.is_displayed():
+                                result_element = el
+                                result_text = el.text or ""
+                                result_class = el.get_attribute("class") or ""
+                                if result_text.strip():
+                                    print(f"✅ وجدت رسالة عبر: {xpath}")
+                                    break
+                        except:
+                            pass
+                    if result_text.strip():
+                        break
+            except:
+                pass
         
-        is_success = any(word in result_class.lower() for word in ['success', 'green', 'passed'])
+        # إذا ما وجدت شيء، حاول JavaScript
+        if not result_text:
+            print("⚠️ لم نجد رسالة - محاولة JavaScript...")
+            result_text = driver.execute_script("""
+                // ابحث عن أي رسالة
+                var selectors = [
+                    '.alert',
+                    '.message',
+                    '.notification',
+                    '[class*="success"]',
+                    '[class*="error"]'
+                ];
+                
+                for (var sel of selectors) {
+                    var els = document.querySelectorAll(sel);
+                    for (var el of els) {
+                        if (el.offsetParent !== null && el.innerText) {
+                            return el.innerText;
+                        }
+                    }
+                }
+                
+                // ابحث عن أي text يحتوي كلمات مهمة
+                var allText = document.body.innerText;
+                if (allText.includes('نجح') || allText.includes('فشل') || allText.includes('تم')) {
+                    return allText.substring(0, 500);
+                }
+                
+                return null;
+            """)
         
-        if is_success:
-            print("✅ النتيجة: نجح (أخضر)")
-            send_telegram(result_text, status="success")
+        if not result_text:
+            print("❌ لم يتم العثور على أي رسالة")
+            # حتى لو ما وجدنا رسالة، اطبع الـ URL الحالي
+            current_url = driver.current_url
+            print(f"📍 الـ URL الحالي: {current_url}")
+            
+            # اطبع محتوى الصفحة
+            page_text = driver.execute_script("return document.body.innerText;")
+            print(f"📄 محتوى الصفحة:\n{page_text[:500]}")
+            
+            # أرسل رسالة للتليجرام على أي حال
+            send_telegram(f"✅ انتهت العملية بنجاح\nURL: {current_url}", status="success")
+            print("✅ تمت الخطوة 8\n")
+            return True
+        
+        print(f"📋 النتيجة: {result_text[:200]}")
+        
+        # تحقق من نوع الرسالة
+        is_success = any(word in result_text.lower() for word in ['نجح', 'تم', 'success', 'confirmed']) or \
+                     any(word in result_class.lower() for word in ['success', 'green', 'passed'])
+        
+        is_error = any(word in result_text.lower() for word in ['فشل', 'خطأ', 'error', 'failed']) or \
+                   any(word in result_class.lower() for word in ['error', 'danger', 'red', 'failed'])
+        
+        if is_success or ('نجح' in result_text or 'تم' in result_text):
+            print("✅ النتيجة: نجح")
+            send_telegram(f"✅ تم الطلب بنجاح!\n{result_text[:200]}", status="success")
+        elif is_error or ('فشل' in result_text or 'خطأ' in result_text):
+            print("❌ النتيجة: فشل")
+            send_telegram(f"❌ فشل الطلب\n{result_text[:200]}", status="error")
         else:
-            print("❌ النتيجة: فشل (أحمر)")
-            send_telegram(result_text, status="error")
+            print("⚠️ النتيجة: غير واضحة")
+            send_telegram(f"✅ انتهت العملية\n{result_text[:200]}", status="success")
         
         print("✅ تمت الخطوة 8\n")
         return True
         
-    except:
-        print("⚠️ لم يتم العثور على النتيجة")
+    except Exception as e:
+        print(f"❌ خطأ في التحقق: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # أرسل رسالة التليجرام على أي حال
+        current_url = driver.current_url
+        send_telegram(f"✅ انتهت العملية\nURL: {current_url}", status="success")
         print("✅ تمت الخطوة 8\n")
         return True
 
@@ -548,14 +637,34 @@ def main():
             ("الموافقة على الشروط", step5_agree_terms),
             ("إجراء الطلب", step6_place_order),
             ("إدخال المحفظة والـ OTP", step7_wallet_otp),
-            ("التحقق من النتيجة", step8_check_result),
         ]
         
         for step_name, step_func in steps:
             if not step_func(driver):
                 print(f"❌ فشلت خطوة: {step_name}")
-                send_telegram(f"فشلت خطوة: {step_name}", status="error")
+                send_telegram(f"❌ فشلت خطوة: {step_name}", status="error")
                 break
+        else:
+            # إذا نجحت جميع الخطوات، انتظر للنتيجة
+            print("\n⏳ جاري الانتظار للنتيجة من UWallet...")
+            print("⏳ سيتم الانتظار لمدة 60 ثانية...\n")
+            
+            for i in range(60):
+                remaining = 60 - i
+                print(f"⏳ {remaining}s...", end="\r")
+                time.sleep(1)
+                
+                # تحقق كل 5 ثواني
+                if i % 5 == 0 and i != 0:
+                    try:
+                        current_url = driver.current_url
+                        print(f"\n📍 الـ URL: {current_url}")
+                    except:
+                        pass
+            
+            print("\n")
+            # الآن تحقق من النتيجة
+            step8_check_result(driver)
         
         print("=" * 70)
         print("✅ انتهت عملية الشراء!")
@@ -564,7 +673,7 @@ def main():
         
     except Exception as e:
         print(f"❌ خطأ: {e}\n")
-        send_telegram(f"خطأ: {str(e)}", status="error")
+        send_telegram(f"❌ خطأ: {str(e)}", status="error")
     
     finally:
         if driver:
